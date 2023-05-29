@@ -1688,6 +1688,93 @@ namespace System
 			Remove(mLength - length, length);
 		}
 
+		public void RemoveFromStart(int length)
+		{
+			Remove(0, length);
+		}
+
+		public void RemoveAsUTF8(int startIdx, int length)
+		{
+			if (length <= 0)
+				return;
+			let ptr = Ptr;
+			var char8Idx = -1;
+			var count = 0;
+			for (int i = 0; i < mLength; i += UTF8.GetDecodedLength(ptr[i]))
+			{
+				if (char8Idx == -1)
+				{
+					if (count >= startIdx)
+					{
+						char8Idx = i;
+						count = 0;
+					}
+				}
+				else if (count >= length)
+				{
+					Remove(char8Idx, i - char8Idx);
+					return;
+				}
+				count++;
+			}
+			if (char8Idx != -1)
+				RemoveToEnd(char8Idx);
+		}
+
+		public void RemoveAsUTF8(int startIdx)
+		{
+			RemoveAsUTF8(startIdx, 1);
+		}
+
+		public void RemoveAsUTF8ToEnd(int startIdx)
+		{
+			let ptr = Ptr;
+			var count = 0;
+			for (int i = 0; i < mLength; i += UTF8.GetDecodedLength(ptr[i]))
+			{
+				if (count >= startIdx)
+				{
+					if (i > 0)
+						RemoveToEnd(i);
+					return;
+				}
+				count++;
+			}
+		}
+
+		public void RemoveAsUTF8FromEnd(int length)
+		{
+			var count = 0;
+			for (int i = mLength - 1; i >= 0; i -= GetChar32BacktrackLength(i) + 1)
+			{
+				if (count >= length)
+				{
+					if (i < mLength - 1)
+						RemoveToEnd(i + 1);
+					return;
+				}
+				count++;
+			}
+			Clear();
+		}
+
+		public void RemoveAsUTF8FromStart(int length)
+		{
+			let ptr = Ptr;
+			var count = 0;
+			for (int i = 0; i < mLength; i += UTF8.GetDecodedLength(ptr[i]))
+			{
+				if (count >= length)
+				{
+					if (i > 0)
+						RemoveFromStart(i);
+					return;
+				}
+				count++;
+			}
+			Clear();
+		}
+
 		public void Insert(int idx, StringView addString)
 		{
 			Contract.Requires(idx >= 0);
@@ -2754,6 +2841,23 @@ namespace System
 			}
 			let (c32, len) = UTF8.Decode(ptr + idx, mLength - idx);
 			return (c32, idx, len);
+		}
+
+		public int GetChar32BacktrackLength(int idx)
+		{
+			Debug.Assert((uint)idx < (uint)mLength);
+			char8* ptr = Ptr;
+			char8 c = ptr[idx];
+			if (c < '\x80')
+				return 0;
+			var idx;
+			while (((uint8)ptr[idx] & 0xC0) == 0x80)
+			{
+				if (idx == 0) // Invalid UTF8 data
+					return 0;
+				idx--;
+			}
+			return @idx - idx;
 		}
 
 		public (int startIdx, int length) GetCodePointSpan(int idx)
@@ -3850,9 +3954,7 @@ namespace System
 					if (!c32.IsWhiteSpace)
 					{
 						if (i < mLength - 1)
-						{
-							mLength = i + 1;
-						}	
+							RemoveToEnd(i + 1);
 						return;
 					}
 					i = idx;
@@ -3860,9 +3962,7 @@ namespace System
 				else if (!c.IsWhiteSpace)
 				{
 					if (i < mLength - 1)
-					{
-						mLength = i + 1;
-					}
+						RemoveToEnd(i + 1);
 					return;
 				}
 			}
@@ -3881,10 +3981,7 @@ namespace System
 					if (!c32.IsWhiteSpace)
 					{
 						if (i > 0)
-						{
-							mPtr += i;
-							mLength -= i;
-						}	
+							RemoveFromStart(i);
 						return;
 					}
 					i += len - 1;
@@ -3892,10 +3989,7 @@ namespace System
 				else if (!c.IsWhiteSpace)
 				{
 					if (i > 0)
-					{
-						mPtr += i;
-						mLength -= i;
-					}
+						RemoveFromStart(i);
 					return;
 				}
 			}
@@ -3920,9 +4014,7 @@ namespace System
 					if (c32 != trimChar)
 					{
 						if (i < mLength - 1)
-						{
-							mLength = i + 1;
-						}	
+							RemoveToEnd(i + 1);
 						return;
 					}
 					i = idx;
@@ -3930,9 +4022,7 @@ namespace System
 				else if (c != (char32)trimChar)
 				{
 					if (i < mLength - 1)
-					{
-						mLength = i + 1;
-					}
+						RemoveToEnd(i + 1);
 					return;
 				}
 			}
@@ -3956,10 +4046,7 @@ namespace System
 					if (c32 != trimChar)
 					{
 						if (i > 0)
-						{
-							mPtr += i;
-							mLength -= i;
-						}	
+							RemoveFromStart(i);	
 						return;
 					}
 					i += len - 1;
@@ -3967,10 +4054,7 @@ namespace System
 				else if (c != (char32)trimChar)
 				{
 					if (i > 0)
-					{
-						mPtr += i;
-						mLength -= i;
-					}
+						RemoveFromStart(i);
 					return;
 				}
 			}
@@ -3992,6 +4076,55 @@ namespace System
 		{
 			TrimStart((.)trimChar);
 			TrimEnd((.)trimChar);
+		}
+
+		public void RemoveAsUTF8ToEnd(int startIdx) mut
+		{
+			let ptr = Ptr;
+			var count = 0;
+			for (int i = 0; i < mLength; i += UTF8.GetDecodedLength(ptr[i]))
+			{
+				if (count >= startIdx)
+				{
+					if (i > 0)
+						RemoveToEnd(i);
+					return;
+				}
+				count++;
+			}
+		}
+
+		public void RemoveAsUTF8FromEnd(int length) mut
+		{
+			var count = 0;
+			for (int i = mLength - 1; i >= 0; i -= GetChar32BacktrackLength(i) + 1)
+			{
+				if (count >= length)
+				{
+					if (i < mLength - 1)
+						RemoveToEnd(i + 1);
+					return;
+				}
+				count++;
+			}
+			Clear();
+		}
+
+		public void RemoveAsUTF8FromStart(int length) mut
+		{
+			let ptr = Ptr;
+			var count = 0;
+			for (int i = 0; i < mLength; i += UTF8.GetDecodedLength(ptr[i]))
+			{
+				if (count >= length)
+				{
+					if (i > 0)
+						RemoveFromStart(i);
+					return;
+				}
+				count++;
+			}
+			Clear();
 		}
 
 		public bool StartsWith(char8 c)
@@ -4085,6 +4218,22 @@ namespace System
 			}
 			let (c32, len) = UTF8.Decode(ptr + idx, mLength - idx);
 			return (c32, idx, len);
+		}
+
+		public Result<int> GetChar32BacktrackLength(int idx)
+		{
+			Debug.Assert((uint)idx < (uint)mLength);
+			char8* ptr = Ptr;
+			if (ptr[idx] < '\x80')
+				return 0;
+			var idx;
+			while (((uint8)ptr[idx] & 0xC0) == 0x80)
+			{
+				if (idx == 0) // Invalid UTF8 data
+					return .Err;
+				idx--;
+			}
+			return @idx - idx;
 		}
 
 		public StringSplitEnumerator Split(char8 c)
